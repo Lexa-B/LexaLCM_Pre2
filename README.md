@@ -1,4 +1,4 @@
-# LexaLCM-Pre1-xxxM Two-Tower Latent Diffusion Large Concept Model
+# LexaLCM-Pre2-xxxM Two-Tower Latent Diffusion Large Concept Model
 これは、Meta FAIRのTwo-Tower Diffusion LCMアーキテクチャを主に基にした、xxxxxxxxx個のパラメータを持つ事前学習済みのLCMで、Hugging Face Transformersで実装されています。
 
 [[Meta FAIRのLCMの研究論文（英語）]](https://ai.meta.com/research/publications/large-concept-models-language-modeling-in-a-sentence-representation-space/)
