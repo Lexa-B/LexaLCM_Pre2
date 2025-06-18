@@ -114,7 +114,7 @@ The process continues for the third embedding, *"The Sengoku era was a period of
 * The model has latched on to the topic of the prompt and gives us an output that's no longer unrelated.
 * The repetition issue is still a problem
 
-This process continues for all the remaining embeddings, where each embedding attends to the previous embeddings in the sequence and attempts to predict the next embedding in the sequence. The model is able to predict the next embedding in the sequence based on the previous embeddings in the sequence, and the model is able to predict the next embedding in the sequence based on the previous embeddings in the sequence.
+This process continues for all the remaining embeddings, where each embedding attends to the previous embeddings in the sequence and attempts to predict the next embedding in the sequence.
 
 This means that the model also outputs a tensor of shape [1, 10, 1024] (identical to the shape of the input tensor), with embedding_0 being the prediction for the first embedding, embedding_1 being the prediction for the second embedding, and so on... as such, for normal (inference) applications, the final embedding in the sequence is the 'most useful' as it is the model's attempt to predict the next embedding after the ending of all provided sentences; It's the model's prediction of novel information. When actually applying the model to tasks in next-sentence prediction, we'll always only use this last embedding, then continue building a larger oputput by taking each last output sentence, then using it to build up a larger output in an autoregressive manner.
 
