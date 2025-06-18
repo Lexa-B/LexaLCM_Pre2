@@ -1,18 +1,18 @@
-# src/LexaLCM/LCM_Config.py
+# src/LexaLCM/Config/LCM_Config.py
 
 from transformers import PretrainedConfig, CONFIG_MAPPING
 
 class LexaLCMConfig(PretrainedConfig):
-    model_type = "lexa_lcm_pre1"
+    model_type = "lexa_lcm_pre2"
     def __init__(
         self,
         input_dim=1024,
         d_model=1536, # 2048 is the default for Meta FAIR's LCM, but you can use 1536 for a smaller model
         d_latent=1024,
         num_context_layers=3, # 5 is the default for Meta FAIR's LCM, but you can use less for a significantly smaller model
-        num_denoiser_layers=4, # 13 is the default for Meta FAIR's LCM, but you can use less for a significantly smaller model
+        num_denoiser_layers=6, # 13 is the default for Meta FAIR's LCM, but you can use less for a significantly smaller model
         n_heads=16, # 16 is the default for Meta FAIR's LCM, but you can use 8 for a slightly lighter model
-        d_ff=6144, # 8192 (* 4) is the default for SwiGLU, but you can use 6144 ( * 3) for a smaller model
+        d_ff=8192, # 8192 (* 4) is the default for SwiGLU, but you can use 6144 ( * 3) for a smaller model
         dropout_context=0.1,
         dropout_latent=0.1,
         dropout_denoiser=0.15, # 0.15 is the default for Meta FAIR's LCM, reduced this to fight exploding gradients
@@ -38,4 +38,4 @@ class LexaLCMConfig(PretrainedConfig):
         self.AdaLN_Timestep_Embed_Dim = AdaLN_Timestep_Embed_Dim
         self.cfg_scale = cfg_scale
 
-CONFIG_MAPPING.register("lexa_lcm_pre1", LexaLCMConfig)
+CONFIG_MAPPING.register("lexa_lcm_pre2", LexaLCMConfig)

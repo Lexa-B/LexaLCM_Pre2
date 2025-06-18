@@ -6,7 +6,7 @@ import os
 # Add the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from LexaLCM.LCM_Config import LexaLCMConfig
+from src.LexaLCM.Config.LCM_Config import LexaLCMConfig
 from LexaLCM.LCM_Model import LexaLCM
 
 # Define the directory where the model is saved

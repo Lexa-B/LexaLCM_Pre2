@@ -9,7 +9,7 @@ import evaluate
 import os
 import json
 
-from LexaLCM.LCM_Config import LexaLCMConfig
+from src.LexaLCM.Config.LCM_Config import LexaLCMConfig
 from LexaLCM.LCM_Model import LexaLCM
 from LexaLCM.Data.DataHandler import LCMDataset, LCMDataset_DryRun, LCMCollator
 from LexaLCM.Utils.NaNGradChecker import NaNGradChecker
@@ -108,11 +108,15 @@ def RunTraining(config_training, model, train_dataset, val_dataset=None, dry_run
     )
 
     print("\n🚀 Starting training...")
-    if resume_path:
+    if resume_path is not None and resume_path != "None" and os.path.exists(resume_path):
         print(f"📦 Resuming training from checkpoint: {resume_path}")  
         trainer.train(resume_from_checkpoint=resume_path)
+    elif resume_from_checkpoint is not None and resume_from_checkpoint != "None" and not os.path.exists(resume_from_checkpoint):
+        print(f"❌ Checkpoint file not found: {resume_from_checkpoint}")
+        print("🐣 Starting training from scratch...")
+        trainer.train()
     else:
-        print("Starting training from scratch...")
+        print("🐣 Starting training from scratch...")
         trainer.train()
 
     # trainer.get_train_dataloader = lambda: train_dataloader
@@ -127,7 +131,7 @@ def LoadConfig(path):
         return yaml.safe_load(file)
 
 def Main():
-    print("🚀 Starting LexaLCM Pre1 Training")
+    print("🚀 Starting LexaLCM Pre2 Training")
 
     # CLI Arguments
     parser = argparse.ArgumentParser()
@@ -139,7 +143,7 @@ def Main():
 
     # Load Config
     print("🔍 Loading config...")
-    config_path = 'src/LexaLCM/Config/Pretrain/Config_Pretrain_Pre1.yaml'
+    config_path = 'src/LexaLCM/Config/Pretrain/Config_Pretrain_Pre2.yaml'
     config_training = LoadConfig(config_path)
 
     if args.verbose:
@@ -156,13 +160,6 @@ def Main():
 
     # Init Model
     resume_path = config_training["training"].get("resume_from", None)
-
-    # if resume_path and os.path.exists(resume_path):
-    #     print(f"📦 Loading model weights from checkpoint: {resume_path}")
-    #     model = LexaLCM.from_pretrained(resume_path)
-    # else:
-    #     model_config = LexaLCMConfig()
-    #     model = LexaLCM(model_config)
 
     model_config = LexaLCMConfig()
     model = LexaLCM(model_config)

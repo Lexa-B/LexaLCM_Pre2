@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from torch.amp import autocast
 from transformers import PreTrainedModel, MODEL_MAPPING
-from LexaLCM.LCM_Config import LexaLCMConfig
+from src.LexaLCM.Config.LCM_Config import LexaLCMConfig
 from LexaLCM.Utils.InspectEmbeddings import inspect_embeddings as inspect_util
 
 
@@ -65,6 +65,8 @@ class TimestepEmbedder(nn.Module):
         self.lin1 = nn.Linear(t_emb_dim, t_emb_dim)
         self.act = nn.SiLU()
         self.lin2 = nn.Linear(t_emb_dim, d_model)
+        nn.init.zeros_(self.lin2.weight)      # Zero-init the weights and bias of the linear2 layer
+        nn.init.zeros_(self.lin2.bias)
 
     def forward(self, timestep):  # timestep: [B, 1, 1] or scalar
         device = timestep.device
@@ -88,14 +90,12 @@ class AdaLNModulator(nn.Module):
             nn.SiLU(),
             nn.Linear(d_model, d_model * 3),  # γ, β, α
         )
-        self.init_zero()
-
-    def init_zero(self):
-        # Start as identity function
-        for layer in self.ff:
-            if isinstance(layer, nn.Linear):
-                nn.init.zeros_(layer.bias)
-                nn.init.normal_(layer.weight, mean=0.0, std=1e-3)
+        # Custom initialization for last linear
+        last_linear = self.ff[1]
+        # γ and β bias to 0, α bias to 1
+        nn.init.zeros_(last_linear.bias[:2*d_model])
+        nn.init.constant_(last_linear.bias[2*d_model:], 1.0)
+        # Weights remain as Kaiming (default)
 
     def forward(self, t_emb):
         return self.ff(t_emb).chunk(3, dim=-1)  # returns γ, β, α
@@ -138,6 +138,8 @@ class FeedForward_AdaLN(nn.Module):
         self.linear1 = nn.Linear(d_model, d_ff * 2)  # SwiGLU: needs 2x d_ff
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(d_ff, d_model)
+        nn.init.zeros_(self.linear2.weight)   # Zero-init the weights and bias of the linear2 layer
+        nn.init.zeros_(self.linear2.bias)
 
     def forward(self, x, t_emb):
 
@@ -226,7 +228,7 @@ def apply_rope_to(q, k, sin, cos):
     return q_rot, k_rot
 
 def build_causal_mask(size, device):
-    return torch.tril(torch.ones(size, size, device=device)).unsqueeze(0).unsqueeze(0)
+    return torch.tril(torch.ones(size, size, device=device, dtype=torch.bool)).unsqueeze(0).unsqueeze(0)
 
 ## Attention Blocks
 
@@ -249,7 +251,8 @@ class MultiHeadAttentionBlock(nn.Module):
         d_k = query.shape[-1]
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
-            attention_scores.masked_fill_(mask == 0, -1e9)
+            mask = mask.bool() # Guarantee mask is bool (needed for ~mask)
+            attention_scores.masked_fill_(~mask, -1e9)
         attention_scores = attention_scores.softmax(dim=-1)
         if dropout is not None:
             attention_scores = dropout(attention_scores)
@@ -294,7 +297,7 @@ class ContextualizerSelfAttention(nn.Module):
         if Verbose_Contextualizer:
             print(f"[DEBUG - Attention-CxSA] causal_mask dtype: {causal_mask.dtype}")
             print(f"[DEBUG - Attention-CxSA] padding_mask dtype: {self.padding_mask.dtype}")
-        full_mask = causal_mask * self.padding_mask.unsqueeze(1).unsqueeze(2) # Combine the causal and padding masks to ensure the model doesn't attend to either future or padding tokens
+        full_mask = causal_mask.bool() & self.padding_mask.unsqueeze(1).unsqueeze(2).bool() # Combine the causal and padding masks to ensure the model doesn't attend to either future or padding tokens... and make sure the masks are bool first
         if Verbose_Contextualizer:
             print(f"[DEBUG - Attention-CxSA] ContextualSelfAttention Mask dtype: x = {x.dtype}, mask = {full_mask.dtype}")
         return self.attn(x, x, x, full_mask)
@@ -388,15 +391,15 @@ class DenoiserCrossAttention(nn.Module):
         if Verbose_Denoiser:
             print(f"[DEBUG - Attention-DnCA] causal_mask dtype: {causal_mask.dtype}")
             print(f"[DEBUG - Attention-DnCA] padding_mask dtype: {padding_mask.dtype}")
-        causal_and_padding_mask = causal_mask * padding_mask.unsqueeze(1).unsqueeze(2) # Combine the causal and padding masks to ensure the model doesn't attend to either future or padding tokens
+        causal_and_padding_mask = causal_mask.bool() & padding_mask.unsqueeze(1).unsqueeze(2).bool() # Combine the causal and padding masks to ensure the model doesn't attend to either future or padding tokens... and make sure the masks are bool first
 
         # 5. Apply Row-Level CFG Dropout
         full_mask = causal_and_padding_mask  # default fallback mask
         if training and dropout_denoiser > 0.0:
-            keep_mask = (torch.rand(context.size(0), context.size(1), device=context.device) > dropout_denoiser).float()
-            keep_mask[:, 0] = 1.0
+            keep_mask = (torch.rand(context.size(0), context.size(1), device=context.device) > dropout_denoiser)
+            keep_mask[:, 0] = True
             context = context * keep_mask.unsqueeze(-1)
-            full_mask = causal_and_padding_mask * keep_mask.unsqueeze(1).unsqueeze(2) # Apply the keep_mask to the full_mask to add the CFG mask
+            full_mask = causal_and_padding_mask & keep_mask.unsqueeze(1).unsqueeze(2) # Apply the keep_mask to the full_mask to add the CFG mask
 
         # 6. Run attention
         y = self.attn(x_mod, context, context, full_mask)
@@ -501,18 +504,12 @@ class ContextualizerTower(nn.Module):
 
 ## Latent Bridge
 
-class LatentBridge(nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1):
+class LatentBridge(nn.Module): # ToDo: Add in future functionality such as the gate for MoE or activation steering, but for now it's just a simple pass-through layer
+    def __init__(self):
         super().__init__()
-        self.proj = nn.Sequential(
-            RMSNorm(d_model),
-            nn.Linear(d_model, d_model),
-            nn.GELU(),
-            nn.Dropout(dropout)
-        )
 
     def forward(self, x):
-        return self.proj(x)
+        return x
 
 ## Denoiser Tower
 
@@ -648,7 +645,7 @@ class LexaLCM(PreTrainedModel):
 
         self.PostNet_C_Down = PostNetC(config.d_model, config.d_latent)
 
-        self.LatentBridge = LatentBridge(config.d_latent, dropout=config.dropout_latent)
+        self.LatentBridge = LatentBridge()
 
         self.PreNet_D_Up = PreNetD(config.d_latent, config.d_model)
 
